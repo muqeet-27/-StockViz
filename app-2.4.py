@@ -1323,10 +1323,10 @@ if st.session_state.authenticated:
         st.header("📚 Learn About Investing")
         st.markdown("""
         ### Technical Analysis
-        - [Understanding RSI](https://www.investopedia.com/terms/r/rsi.asp)
-        - [MACD Explained](https://www.youtube.com/watch?v=kA9hK4G4fTE)
+        - [Understanding RSI](https://www.youtube.com/watch?v=hbcCykbX14U)
+        - [MACD Explained](https://www.youtube.com/watch?v=RU8gIjWDPbg)
         ### Portfolio Management
-        - [Diversification Strategies](https://www.investopedia.com/terms/d/diversification.asp)
+        - [Diversification Strategies](https://www.youtube.com/watch?v=ITToi2M4FoQ)
         ### Videos
         <iframe width="100%" height="315" src="https://www.youtube.com/embed/kA9hK4G4fTE" frameborder="0" allowfullscreen></iframe>
         """, unsafe_allow_html=True)
