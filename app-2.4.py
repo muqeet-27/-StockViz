@@ -102,7 +102,7 @@ def connect_to_mongo(max_retries=3, delay=2):
                 db.portfolios.create_index([("user_id", ASCENDING)], unique=True)
                 db.watchlists.create_index([("user_id", ASCENDING)], unique=True)
                 db.alerts.create_index([("user_id", ASCENDING), ("ticker", ASCENDING)])
-                st.sidebar.success("✅ AWS Connected")
+                st.sidebar.success("✅ MongoDB Connected")
                 return client
             except ConnectionFailure as e:
                 logger.error(f"MongoDB connection attempt {attempt+1} failed: {str(e)}")
@@ -281,15 +281,15 @@ def send_alert_email(email, ticker, current_price, target_price):
         msg['From'] = sender_email
         msg['To'] = email
         msg.set_content(f"""Your price alert for {ticker} has been triggered!
-Current Price: ${current_price:.2f}
-Target Price: ${target_price:.2f}""")
+Current Price: ${current_price:.4f}
+Target Price: ${target_price:.4f}""")
         msg.add_alternative(f"""\
         <html>
             <body>
                 <h2>Price Alert for {ticker}</h2>
                 <p>Your alert has been triggered!</p>
-                <p><strong>Current Price:</strong> ${current_price:.2f}</p>
-                <p><strong>Target Price:</strong> ${target_price:.2f}</p>
+                <p><strong>Current Price:</strong> ${current_price:.4f}</p>
+                <p><strong>Target Price:</strong> ${target_price:.4f}</p>
             </body>
         </html>
         """, subtype='html')
@@ -1323,15 +1323,14 @@ if st.session_state.authenticated:
         st.header("📚 Learn About Investing")
         st.markdown("""
         ### Technical Analysis
-        - [Understanding RSI](https://www.youtube.com/watch?v=hbcCykbX14U)
-        - [MACD Explained](https://www.youtube.com/watch?v=RU8gIjWDPbg)
+        - [Understanding RSI](https://www.investopedia.com/terms/r/rsi.asp)
+        - [MACD Explained](https://www.youtube.com/watch?v=kA9hK4G4fTE)
         ### Portfolio Management
-        - [Diversification Strategies](https://www.youtube.com/watch?v=ITToi2M4FoQ)
-
-          ### Videos
+        - [Diversification Strategies](https://www.investopedia.com/terms/d/diversification.asp)
+        ### Videos
         <iframe width="100%" height="315" src="https://www.youtube.com/embed/kA9hK4G4fTE" frameborder="0" allowfullscreen></iframe>
         """, unsafe_allow_html=True)
-        
+
 elif st.session_state.show_logout_message:
     st.markdown("""
     <div class="text-center mt-12 text-2xl">
