@@ -1341,8 +1341,38 @@ elif st.session_state.show_logout_message:
     st.session_state.show_logout_message = False
 else:
     st.markdown("""
-    <div class="text-center mt-12 text-2xl">
-        🔒 Please log in to access TradeTrend Analyzer
+    <div class="text-center mt-12 bg-gray-900 min-h-screen flex items-center justify-center">
+        <div class="bg-gray-800 p-8 rounded-lg shadow-xl max-w-4xl w-full">
+            <h1 class="text-5xl font-bold text-white mb-4 flex items-center justify-center">
+                <span>TradeTrend Analyzer</span>
+                <span class="ml-4 text-3xl">📈</span>
+            </h1>
+            <p class="text-lg text-gray-300 mb-6">
+                Your one-stop platform for smarter stock market decisions. Analyze stocks, manage your portfolio,
+                track real-time data, and stay updated with market news and economic events.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
+                    <h4 class="text-xl font-semibold text-blue-400 mb-2">Real-Time Insights</h4>
+                    <p class="text-gray-300">Access live stock prices and technical indicators to make informed trades.</p>
+                </div>
+                <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
+                    <h4 class="text-xl font-semibold text-blue-400 mb-2">Portfolio Management</h4>
+                    <p class="text-gray-300">Track and optimize your investments with our intuitive tools.</p>
+                </div>
+                <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
+                    <h4 class="text-xl font-semibold text-blue-400 mb-2">Price Alerts</h4>
+                    <p class="text-gray-300">Set custom alerts to never miss a trading opportunity.</p>
+                </div>
+            </div>
+            <p class="text-lg text-gray-400 mb-6">
+                🔒 <a href="#" class="text-blue-500 hover:text-blue-300 underline">Log In</a> or 
+                <a href="#" class="text-blue-500 hover:text-blue-300 underline">Register</a> to start exploring!
+            </p>
+            <div class="text-sm text-gray-500 mt-4">
+                Made by <span class="text-white font-semibold">Abdul Muqeet</span> | CSE Dept, GMU
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
