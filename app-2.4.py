@@ -102,7 +102,7 @@ def connect_to_mongo(max_retries=3, delay=2):
                 db.portfolios.create_index([("user_id", ASCENDING)], unique=True)
                 db.watchlists.create_index([("user_id", ASCENDING)], unique=True)
                 db.alerts.create_index([("user_id", ASCENDING), ("ticker", ASCENDING)])
-                st.sidebar.success("✅ MongoDB Connected")
+                st.sidebar.success("✅ AWS Connected")
                 return client
             except ConnectionFailure as e:
                 logger.error(f"MongoDB connection attempt {attempt+1} failed: {str(e)}")
@@ -146,12 +146,43 @@ def validate_password(password):
 
 def adjust_ticker(ticker, exchange):
     """Adjust ticker format based on the selected exchange."""
-    if exchange == "US":
+    ticker = ticker.upper().strip()
+    if exchange == "US" or exchange == "NASDAQ":
         return ticker
     elif exchange == "NSE":
         return f"{ticker}.NS"
     elif exchange == "BSE":
         return f"{ticker}.BO"
+    elif exchange == "SSE":
+        return f"{ticker}.SS"
+    elif exchange == "SZSE":
+        return f"{ticker}.SZ"
+    elif exchange == "HKEX":
+        return f"{ticker}.HK"
+    elif exchange == "TSE":
+        return f"{ticker}.T"
+    elif exchange == "LSE":
+        return ticker  # LSE uses base ticker
+    elif exchange == "EURONEXT":
+        return f"{ticker}.PA"  # Paris as default, adjust per market
+    elif exchange == "TSX":
+        return f"{ticker}.TO"
+    elif exchange == "ASX":
+        return f"{ticker}.AX"
+    elif exchange == "SGX":
+        return f"{ticker}.SI"
+    elif exchange == "KRX":
+        return f"{ticker}.KS"
+    elif exchange == "BOVESPA":
+        return f"{ticker}.SA"
+    elif exchange == "JSE":
+        return f"{ticker}.SJ"
+    elif exchange == "BMV":
+        return f"{ticker}.MX"
+    elif exchange == "MOEX":
+        return f"{ticker}.ME"
+    elif exchange == "BIST":
+        return f"{ticker}.IS"
     return ticker
 
 def reverse_adjust_ticker(ticker, exchange):
@@ -159,6 +190,34 @@ def reverse_adjust_ticker(ticker, exchange):
     if exchange == "NSE" and ticker.endswith(".NS"):
         return ticker[:-3]
     elif exchange == "BSE" and ticker.endswith(".BO"):
+        return ticker[:-3]
+    elif exchange == "SSE" and ticker.endswith(".SS"):
+        return ticker[:-3]
+    elif exchange == "SZSE" and ticker.endswith(".SZ"):
+        return ticker[:-3]
+    elif exchange == "HKEX" and ticker.endswith(".HK"):
+        return ticker[:-3]
+    elif exchange == "TSE" and ticker.endswith(".T"):
+        return ticker[:-2]
+    elif exchange == "EURONEXT" and ticker.endswith(".PA"):
+        return ticker[:-3]
+    elif exchange == "TSX" and ticker.endswith(".TO"):
+        return ticker[:-3]
+    elif exchange == "ASX" and ticker.endswith(".AX"):
+        return ticker[:-3]
+    elif exchange == "SGX" and ticker.endswith(".SI"):
+        return ticker[:-3]
+    elif exchange == "KRX" and ticker.endswith(".KS"):
+        return ticker[:-3]
+    elif exchange == "BOVESPA" and ticker.endswith(".SA"):
+        return ticker[:-3]
+    elif exchange == "JSE" and ticker.endswith(".SJ"):
+        return ticker[:-3]
+    elif exchange == "BMV" and ticker.endswith(".MX"):
+        return ticker[:-3]
+    elif exchange == "MOEX" and ticker.endswith(".ME"):
+        return ticker[:-3]
+    elif exchange == "BIST" and ticker.endswith(".IS"):
         return ticker[:-3]
     return ticker
 
@@ -214,12 +273,42 @@ def fetch_news(ticker, exchange):
 
 def ticker_for_alpha_vantage(ticker, exchange):
     """Format ticker for Alpha Vantage API."""
-    if exchange == "US":
+    if exchange == "US" or exchange == "NASDAQ":
         return ticker
     elif exchange == "NSE":
         return f"{ticker}.NS"
     elif exchange == "BSE":
         return f"BSE:{ticker}"
+    elif exchange == "SSE":
+        return f"XSHG:{ticker}"
+    elif exchange == "SZSE":
+        return f"XSHE:{ticker}"
+    elif exchange == "HKEX":
+        return f"{ticker}.HK"
+    elif exchange == "TSE":
+        return f"{ticker}.T"
+    elif exchange == "LSE":
+        return f"LON:{ticker}"
+    elif exchange == "EURONEXT":
+        return f"PAR:{ticker}"  # Paris as default
+    elif exchange == "TSX":
+        return f"TOR:{ticker}"
+    elif exchange == "ASX":
+        return f"ASX:{ticker}"
+    elif exchange == "SGX":
+        return f"SGX:{ticker}"
+    elif exchange == "KRX":
+        return f"KSC:{ticker}"
+    elif exchange == "BOVESPA":
+        return f"BVMF:{ticker}"
+    elif exchange == "JSE":
+        return f"JNB:{ticker}"
+    elif exchange == "BMV":
+        return f"MEX:{ticker}"
+    elif exchange == "MOEX":
+        return f"MCX:{ticker}"
+    elif exchange == "BIST":
+        return f"IST:{ticker}"
     return ticker
 
 def send_verification_email(email, token):
@@ -1032,74 +1121,126 @@ mongo_client = connect_to_mongo()
 with st.sidebar.container():
     st.session_state.dark_mode = st.checkbox("🌙 Dark Mode", value=st.session_state.dark_mode)
     apply_css_styles(st.session_state.dark_mode)
-    currency = st.selectbox("💱 Currency", ["USD", "EUR", "GBP", "JPY", "INR"], key="currency")
-    exchange = st.selectbox("🏛️ Stock Exchange", ["US", "NSE", "BSE"], key="exchange")
+
+    # Global Currencies
+    currencies = {
+        "USD": "United States Dollar",
+        "EUR": "Euro",
+        "GBP": "British Pound",
+        "JPY": "Japanese Yen",
+        "INR": "Indian Rupee",
+        "CNY": "Chinese Yuan",
+        "HKD": "Hong Kong Dollar",
+        "KRW": "South Korean Won",
+        "SGD": "Singapore Dollar",
+        "AUD": "Australian Dollar",
+        "CAD": "Canadian Dollar",
+        "CHF": "Swiss Franc",
+        "SEK": "Swedish Krona",
+        "NOK": "Norwegian Krone",
+        "DKK": "Danish Krone",
+        "BRL": "Brazilian Real",
+        "ZAR": "South African Rand",
+        "MXN": "Mexican Peso",
+        "RUB": "Russian Ruble",
+        "TRY": "Turkish Lira"
+    }
+    currency = st.selectbox("💱 Currency", list(currencies.keys()), format_func=lambda x: f"{x} - {currencies[x]}", key="currency")
     exchange_rate = get_exchange_rate("USD", currency)
 
-auth_mode = st.sidebar.radio("Choose Action", ["Login", "Register"], key="auth_mode")
+    # Global Stock Exchanges with Countries
+    exchanges = {
+        "US": "United States - NYSE (New York Stock Exchange)",
+        "NASDAQ": "United States - NASDAQ",
+        "NSE": "India - National Stock Exchange",
+        "BSE": "India - Bombay Stock Exchange",
+        "SSE": "China - Shanghai Stock Exchange",
+        "SZSE": "China - Shenzhen Stock Exchange",
+        "HKEX": "Hong Kong - Hong Kong Stock Exchange",
+        "TSE": "Japan - Tokyo Stock Exchange",
+        "LSE": "United Kingdom - London Stock Exchange",
+        "EURONEXT": "Europe - Euronext",
+        "TSX": "Canada - Toronto Stock Exchange",
+        "ASX": "Australia - Australian Securities Exchange",
+        "SGX": "Singapore - Singapore Exchange",
+        "KRX": "South Korea - Korea Exchange",
+        "BOVESPA": "Brazil - B3 (Bovespa)",
+        "JSE": "South Africa - Johannesburg Stock Exchange",
+        "BMV": "Mexico - Bolsa Mexicana de Valores",
+        "MOEX": "Russia - Moscow Exchange",
+        "BIST": "Turkey - Borsa Istanbul"
+    }
+    exchange = st.selectbox("🏛️ Stock Exchange", list(exchanges.keys()), format_func=lambda x: exchanges[x], key="exchange")
 
-if auth_mode == "Register":
-    with st.sidebar.form("register_form"):
-        name = st.text_input("Name", key="reg_name")
-        email = st.text_input("Email", key="reg_email").lower()
-        phone = st.text_input("Phone", key="reg_phone")
-        age = st.number_input("Age", min_value=1, max_value=100, key="reg_age")
-        password = st.text_input("Password", type="password", key="reg_password")
-        confirm_password = st.text_input("Confirm Password", type="password", key="reg_confirm")
-        if st.form_submit_button("Register"):
-            if not all([name, email, phone, age, password, confirm_password]):
-                st.sidebar.error("⚠️ All fields required")
-            elif not is_valid_email(email):
-                st.sidebar.error("⚠️ Invalid email format")
-            elif password != confirm_password:
-                st.sidebar.error("⚠️ Passwords don't match")
-            else:
-                with st.spinner("Registering..."):
-                    if store_user_data(mongo_client, name, email, phone, age, password):
-                        st.sidebar.info("📧 Check your email for verification")
+    # Display Current Date and Time
+    from datetime import datetime
+    current_time = datetime.now().strftime("%I:%M %p IST on %A, %B %d, %Y")  # e.g., "02:16 AM IST on Tuesday, June 24, 2025"
+    st.sidebar.markdown(f"🕒 Current Time: **{current_time}**", unsafe_allow_html=True)
 
-elif auth_mode == "Login":
-    with st.sidebar.form("login_form"):
-        login_email = st.text_input("Email", key="login_email").lower()
-        login_password = st.text_input("Password", type="password", key="login_password")
-        if st.form_submit_button("Login"):
-            try:
-                user, error = login_user(mongo_client, login_email, login_password)
-                if user:
-                    st.session_state.authenticated = True
-                    st.session_state.user = user
-                    st.session_state.show_logout_message = False
-                    st.sidebar.success(f"✅ Welcome, {user['name']}!")
+    auth_mode = st.sidebar.radio("Choose Action", ["Login", "Register"], key="auth_mode")
+
+    if auth_mode == "Register":
+        with st.sidebar.form("register_form"):
+            name = st.text_input("Name", key="reg_name")
+            email = st.text_input("Email", key="reg_email").lower()
+            phone = st.text_input("Phone", key="reg_phone")
+            age = st.number_input("Age", min_value=1, max_value=100, key="reg_age")
+            password = st.text_input("Password", type="password", key="reg_password")
+            confirm_password = st.text_input("Confirm Password", type="password", key="reg_confirm")
+            if st.form_submit_button("Register"):
+                if not all([name, email, phone, age, password, confirm_password]):
+                    st.sidebar.error("⚠️ All fields required")
+                elif not is_valid_email(email):
+                    st.sidebar.error("⚠️ Invalid email format")
+                elif password != confirm_password:
+                    st.sidebar.error("⚠️ Passwords don't match")
                 else:
-                    st.sidebar.error(f"❌ {error}")
-                    if "not verified" in error.lower():
-                        if st.button("Resend Verification Email"):
-                            user = mongo_client["UserDB"]["users"].find_one({"email": login_email})
-                            if user and not user.get("verified", False):
-                                last_sent = user.get("token_created")
-                                if last_sent and (datetime.now() - last_sent) < timedelta(minutes=5):
-                                    st.sidebar.warning("Email sent recently. Please wait")
-                                else:
-                                    token = str(uuid.uuid4())
-                                    mongo_client["UserDB"]["users"].update_one(
-                                        {"_id": user["_id"]},
-                                        {"$set": {"verification_token": token, "token_created": datetime.now()},
-                                         "$inc": {"email_attempts": 1}}
-                                    )
-                                    success, error_msg = send_verification_email(login_email, token)
-                                    if success:
-                                        st.sidebar.success("✅ Email resent")
-                                    else:
-                                        st.sidebar.error(f"Failed to resend: {error_msg}")
-            except Exception as e:
-                st.sidebar.error(f"Login error: {str(e)}")
+                    with st.spinner("Registering..."):
+                        if store_user_data(mongo_client, name, email, phone, age, password):
+                            st.sidebar.info("📧 Check your email for verification")
 
-if st.session_state.authenticated:
-    if st.sidebar.button("Logout"):
-        st.session_state.authenticated = False
-        st.session_state.user = None
-        st.session_state.show_logout_message = True
-        st.rerun()
+    elif auth_mode == "Login":
+        with st.sidebar.form("login_form"):
+            login_email = st.text_input("Email", key="login_email").lower()
+            login_password = st.text_input("Password", type="password", key="login_password")
+            if st.form_submit_button("Login"):
+                try:
+                    user, error = login_user(mongo_client, login_email, login_password)
+                    if user:
+                        st.session_state.authenticated = True
+                        st.session_state.user = user
+                        st.session_state.show_logout_message = False
+                        st.sidebar.success(f"✅ Welcome, {user['name']}!")
+                    else:
+                        st.sidebar.error(f"❌ {error}")
+                        if "not verified" in error.lower():
+                            if st.button("Resend Verification Email"):
+                                user = mongo_client["UserDB"]["users"].find_one({"email": login_email})
+                                if user and not user.get("verified", False):
+                                    last_sent = user.get("token_created")
+                                    if last_sent and (datetime.now() - last_sent) < timedelta(minutes=5):
+                                        st.sidebar.warning("Email sent recently. Please wait")
+                                    else:
+                                        token = str(uuid.uuid4())
+                                        mongo_client["UserDB"]["users"].update_one(
+                                            {"_id": user["_id"]},
+                                            {"$set": {"verification_token": token, "token_created": datetime.now()},
+                                             "$inc": {"email_attempts": 1}}
+                                        )
+                                        success, error_msg = send_verification_email(login_email, token)
+                                        if success:
+                                            st.sidebar.success("✅ Email resent")
+                                        else:
+                                            st.sidebar.error(f"Failed to resend: {error_msg}")
+                except Exception as e:
+                    st.sidebar.error(f"Login error: {str(e)}")
+
+    if st.session_state.authenticated:
+        if st.sidebar.button("Logout"):
+            st.session_state.authenticated = False
+            st.session_state.user = None
+            st.session_state.show_logout_message = True
+            st.rerun()
 
 # =========================
 # 🖥️ Main Content
