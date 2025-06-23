@@ -102,7 +102,7 @@ def connect_to_mongo(max_retries=3, delay=2):
                 db.portfolios.create_index([("user_id", ASCENDING)], unique=True)
                 db.watchlists.create_index([("user_id", ASCENDING)], unique=True)
                 db.alerts.create_index([("user_id", ASCENDING), ("ticker", ASCENDING)])
-                st.sidebar.success("✅ MongoDB Connected")
+                st.sidebar.success("✅ AWS Connected")
                 return client
             except ConnectionFailure as e:
                 logger.error(f"MongoDB connection attempt {attempt+1} failed: {str(e)}")
