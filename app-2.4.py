@@ -1373,6 +1373,7 @@ if st.session_state.authenticated:
                     holdings.append({"ticker": base_ticker, "shares": shares})
                     if update_portfolio(mongo_client, st.session_state.user["_id"], holdings):
                         st.success("Portfolio updated!")
+
         if holdings:
             total_value, value_data, errors = calculate_portfolio_value(holdings, exchange)
             if errors:
@@ -1390,12 +1391,28 @@ if st.session_state.authenticated:
                     st.info("No portfolio data available to display allocation chart.")
             else:
                 st.info("Unable to fetch portfolio data. Please check the tickers or try again later.")
-            for item in holdings:
-                st.markdown(f"{item['ticker']}: {item['shares']} shares")
-                if st.button(f"Remove {item['ticker']}", key=f"remove_{item['ticker']}"):
-                    holdings = [h for h in holdings if h['ticker'] != item['ticker']]
-                    update_portfolio(mongo_client, st.session_state.user["_id"], holdings)
-                    st.rerun()
+            
+            # Display holdings with serial numbers
+            st.markdown("### Portfolio Holdings")
+            for i, item in enumerate(holdings, start=1):
+                st.markdown(f"{i}. {item['ticker']}: {item['shares']} shares")
+
+            # Input for removing stock by serial number
+            remove_index = st.number_input("Enter Serial Number to Remove (1 to {})".format(len(holdings)), 
+                                          min_value=1, 
+                                          max_value=len(holdings) if holdings else 0, 
+                                          step=1, 
+                                          key="remove_index")
+            if st.button("Remove Stock"):
+                if 1 <= remove_index <= len(holdings):
+                    removed_ticker = holdings[remove_index - 1]["ticker"]  # Convert to 0-based index
+                    holdings.pop(remove_index - 1)
+                    if update_portfolio(mongo_client, st.session_state.user["_id"], holdings):
+                        st.success(f"Removed {removed_ticker} from portfolio!")
+                        st.rerun()
+                else:
+                    st.error("Invalid serial number")
+
             risk_metrics = calculate_risk_metrics(holdings, exchange)
             if risk_metrics:
                 st.markdown("### 📉 Risk Metrics")
@@ -1406,6 +1423,7 @@ if st.session_state.authenticated:
                 watchlist = get_watchlist(mongo_client, st.session_state.user["_id"])
                 pdf_data = generate_pdf_report(holdings, watchlist, total_value, risk_metrics, exchange)
                 st.download_button("Download PDF Report", pdf_data, "portfolio_report.pdf", "application/pdf")
+
         with st.expander("🔔 Alerts"):
             alerts = mongo_client["UserDB"]["alerts"].find({"user_id": st.session_state.user["_id"], "status": "active"})
             st.write("Active Alerts:")
@@ -1422,6 +1440,7 @@ if st.session_state.authenticated:
             if st.button("Set Alert"):
                 if add_alert(mongo_client, st.session_state.user["_id"], alert_base_ticker, target_price, condition.lower(), exchange):
                     st.success("Alert set!")
+
         with st.expander("👀 Watchlist"):
             watchlist = get_watchlist(mongo_client, st.session_state.user["_id"])
             watch_base_ticker = st.text_input("Add Ticker", key="watchlist_ticker").upper()
