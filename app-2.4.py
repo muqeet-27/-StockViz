@@ -34,6 +34,8 @@ from scipy.stats import norm
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout
+import tradingeconomics as te
+import streamlit.components.v1 as components
 
 # =========================
 # 🚀 Initial Setup
@@ -870,19 +872,7 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(check_alerts, 'interval', minutes=5)
 scheduler.start()
 
-# =========================
-# 📅 Economic Calendar
-# =========================
-@st.cache_data(ttl=86400)
-def fetch_economic_calendar(api_key):
-    url = f"https://www.alphavantage.co/query?function=ECONOMIC_CALENDAR&apikey={api_key}"
-    try:
-        response = requests.get(url)
-        events = response.json().get("data", [])
-        return pd.DataFrame(events)[:10]
-    except Exception as e:
-        logger.error(f"Economic calendar error: {str(e)}")
-        return pd.DataFrame()
+ 
 
 # =========================
 # 📉 Risk Analysis
@@ -1242,6 +1232,9 @@ with st.sidebar.container():
             st.session_state.show_logout_message = True
             st.rerun()
 
+import streamlit as st
+import streamlit.components.v1 as components
+
 # =========================
 # 🖥️ Main Content
 # =========================
@@ -1259,7 +1252,7 @@ if st.session_state.authenticated:
             col1, col2 = st.columns([3, 1])
             base_tickers = col1.text_input("Enter symbols (e.g., AAPL,MSFT or RELIANCE,TCS)", value="").upper().split(',')
             tickers = [adjust_ticker(ticker.strip(), exchange) for ticker in base_tickers if ticker.strip()]
-            data_source = col2.selectbox("Data Source", ["Historical (yFinance)", "Real-Time (Alpha Vantage)"], key="data_source")
+            data_source = col2.selectbox("Data Source", ["Historical", "Real-Time"], key="data_source")
         
         time_range_option = st.selectbox(
             "Time Range", ["3 months", "6 months", "1 year", "3 years", "5 years", "Custom Range"],
@@ -1294,7 +1287,7 @@ if st.session_state.authenticated:
                 base_ticker = reverse_adjust_ticker(ticker, exchange)
                 if not ticker:
                     continue
-                if data_source == "Real-Time (Alpha Vantage)":
+                if data_source == "Real-Time":
                     api_key = os.getenv("ALPHA_VANTAGE_API_KEY")
                     if not api_key:
                         st.error("⚠️ Alpha Vantage API key not configured")
@@ -1473,22 +1466,49 @@ if st.session_state.authenticated:
 
     with tabs[3]:
         st.header("📅 Economic Calendar")
-        calendar = fetch_economic_calendar(os.getenv("ALPHA_VANTAGE_API_KEY"))
-        if not calendar.empty:
-            st.dataframe(calendar[["date", "event", "impact", "country"]])
-        else:
-            st.info("No upcoming events found")
+        if st.button("Refresh Calendar"):
+            st.rerun()  # Refresh the page to reload the widget
+        st.write("Real-Time Economic Calendar provided by Investing.com. Customize via their site if needed.")
+        components.html(
+            """
+            <iframe src="https://sslecal2.investing.com?columns=exc_flags,exc_currency,exc_importance,exc_actual,exc_forecast,exc_previous&category=_employment,_economicActivity,_inflation,_credit,_centralBanks,_confidenceIndex,_balance,_Bonds&importance=2,3&features=datepicker,timezone,timeselector,filters&countries=95,86,29,25,54,114,145,47,34,8,174,163,32,70,6,232,27,37,122,15,78,113,107,55,24,121,59,89,72,71,22,17,74,51,39,93,106,14,48,66,33,23,10,119,35,92,102,57,94,204,97,68,96,103,111,42,109,188,7,139,247,105,82,172,21,43,20,60,87,44,193,148,125,45,53,38,170,100,56,80,52,238,36,90,112,110,11,26,162,9,12,46,85,41,202,63,123,61,143,4,5,180,168,138,178,84,75&calType=week&timeZone=8&lang=1"
+                    width="100%" height="500" frameborder="0" allowtransparency="true" marginwidth="0" marginheight="0">
+            </iframe>
+            <div class="poweredBy" style="font-family: Arial, Helvetica, sans-serif;">
+                <span style="font-size: 11px;color: #333333;text-decoration: none;">
+                Real Time Economic Calendar provided by 
+                <a href="https://www.investing.com/" rel="nofollow" target="_blank" 
+                style="font-size: 11px;color: #06529D; font-weight: bold;" class="underline_link">
+                Investing.com</a>.
+                </span>
+            </div>
+            """,
+            height=550,
+            scrolling=True
+        )
+        st.info("Note: The calendar reflects data as of June 29, 2025, 7:24 PM IST. If it fails to load, ensure your internet connection allows embedding from Investing.com.")
 
     with tabs[4]:
         st.header("📚 Learn About Investing")
         st.markdown("""
         ### Technical Analysis
-        - [Understanding RSI](https://www.investopedia.com/terms/r/rsi.asp)
-        - [MACD Explained](https://www.youtube.com/watch?v=kA9hK4G4fTE)
+        - [Understanding RSI](https://www.investopedia.com/terms/r/rsi.asp) - Learn how the Relative Strength Index measures momentum.
+        - [MACD Explained](https://www.investopedia.com/terms/m/macd.asp) - Explore the Moving Average Convergence Divergence indicator.
+        - [Candlestick Patterns](https://www.investopedia.com/trading/candlestick-charting-what-is-it/) - Master chart patterns for trading signals.
+        - [Bollinger Bands](https://www.investopedia.com/articles/technical/102201.asp) - Use volatility bands for trend analysis.
+        - [Fibonacci Retracement](https://www.investopedia.com/terms/f/fibonacciretracement.asp) - Apply Fibonacci levels to identify support and resistance.
         ### Portfolio Management
-        - [Diversification Strategies](https://www.investopedia.com/terms/d/diversification.asp)
-        ### Videos
-        <iframe width="100%" height="315" src="https://www.youtube.com/embed/kA9hK4G4fTE" frameborder="0" allowfullscreen></iframe>
+        - [Diversification Strategies](https://www.investopedia.com/terms/d/diversification.asp) - Explore how to spread risk across assets.
+        - [Rebalancing Techniques](https://www.fidelity.com/viewpoints/investing-ideas/why-rebalance-portfolio) - Tips on maintaining your portfolio's target allocation.
+        - [Asset Allocation](https://www.investopedia.com/terms/a/assetallocation.asp) - Learn to balance investments across asset classes.
+        ### Risk Management
+        - [Stop-Loss Orders](https://www.investopedia.com/terms/s/stop-lossorder.asp) - Learn to limit losses with this trading tool.
+        - [Risk-Reward Ratio](https://www.investopedia.com/terms/r/riskrewardratio.asp) - Understand how to balance potential gains and losses.
+        - [Hedging Strategies](https://www.investopedia.com/terms/h/hedge.asp) - Discover ways to protect your portfolio.
+        ### Market Psychology
+        - [Behavioral Finance](https://www.investopedia.com/terms/b/behavioralfinance.asp) - Discover how emotions impact investment decisions.
+        - [Overconfidence Bias](https://www.investopedia.com/terms/o/overconfidenceeffect.asp) - Avoid common pitfalls in trading psychology.
+        - [Loss Aversion](https://www.investopedia.com/terms/l/lossaversion.asp) - Learn why investors fear losses more than they value gains.
         """, unsafe_allow_html=True)
 
 elif st.session_state.show_logout_message:
