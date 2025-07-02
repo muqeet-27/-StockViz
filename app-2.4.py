@@ -128,9 +128,9 @@ def check_password(password, hashed):
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
 def is_valid_email(email):
-    pattern = r"^(?=.{6,30}@gmail\.com$)[a-z0-9](?!.*\.\.)[a-z0-9._]*[a-z0-9]@gmail\.com$"
-    return bool(re.match(pattern, email.lower()))
-
+    pattern = r"^[a-zA-Z0-9](?!.*\.\.)[a-zA-Z0-9._%+-]{0,63}[a-zA-Z0-9]@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    return bool(re.match(pattern, email))
+    
 def validate_password(password):
     if len(password) < 8:
         return False, "Password must be at least 8 characters"
