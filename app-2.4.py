@@ -313,9 +313,21 @@ def ticker_for_alpha_vantage(ticker, exchange):
         return f"IST:{ticker}"
     return ticker
 
+# https://app-24py-vpfv4sebhdmvxbmyvsdqnq.streamlit.app
+
+
 def send_verification_email(email, token):
-    app_url = os.getenv("APP_URL", "http://localhost:8501")
+    # Dynamically determine APP_URL with fallback
+    app_url = os.getenv("APP_URL")
+    if not app_url:
+        logger.warning("APP_URL not set in environment. Using default deployed URL.")
+        app_url = "https://app-24py-vpfv4sebhdmvxbmyvsdqnq.streamlit.app"
+    elif "localhost" in app_url.lower():
+        logger.warning("APP_URL contains localhost. Overriding with deployed URL.")
+        app_url = "https://app-24py-vpfv4sebhdmvxbmyvsdqnq.streamlit.app"
     verification_link = f"{app_url}/?token={token}"
+    logger.info(f"Generated verification link: {verification_link}")
+
     sender_email = os.getenv("SMTP_USER")
     sender_password = os.getenv("SMTP_PASS")
     smtp_server = os.getenv("SMTP_HOST")
@@ -337,15 +349,7 @@ The link will expire in 24 hours.""")
             <body>
                 <h2>Welcome to TradeTrend Analyzer!</h2>
                 <p>Please verify your email address by clicking the button below:</p>
-                <a href="{verification_link}" style="
-                    background-color: #3b82f6;
-                    color: white;
-                    padding: 10px 20px;
-                    text-decoration: none;
-                    border-radius: 5px;
-                    display: inline-block;
-                    margin: 10px 0;
-                ">Verify Email</a>
+                <a href="{verification_link}" style="background-color: #3b82f6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 10px 0;">Verify Email</a>
                 <p>Or copy this link to your browser: {verification_link}</p>
                 <p><small>The link will expire in 24 hours.</small></p>
             </body>
@@ -355,7 +359,7 @@ The link will expire in 24 hours.""")
             server.starttls()
             server.login(sender_email, sender_password)
             server.send_message(msg)
-            logger.info(f"Email sent to {email} via SMTP")
+            logger.info(f"Email sent to {email} via SMTP with link: {verification_link}")
             return True, "Email sent via SMTP"
     except Exception as e:
         logger.error(f"SMTP error: {str(e)}")
@@ -444,10 +448,12 @@ def verify_user(client, token):
     db = client["UserDB"]
     user = db.users.find_one({"verification_token": token})
     if not user:
+        logger.error(f"Invalid token: {token}")
         return False, "Invalid token"
     token_age = datetime.now() - user.get("token_created", datetime.now())
     if token_age > timedelta(hours=24):
         db.users.delete_one({"_id": user["_id"]})
+        logger.warning(f"Token expired for user {user.get('_id')}")
         return False, "Token expired"
     try:
         db.users.update_one(
@@ -455,9 +461,10 @@ def verify_user(client, token):
             {"$set": {"verified": True}, 
              "$unset": {"verification_token": "", "token_created": ""}}
         )
+        logger.info(f"User {user.get('_id')} verified successfully")
         return True, "Email verified!"
     except Exception as e:
-        logger.error(f"Verification error: {str(e)}")
+        logger.error(f"Verification update error: {str(e)}")
         return False, "Verification error"
 
 @rate_limit(max_calls=5, time_frame=300)
@@ -1087,21 +1094,37 @@ if "authenticated" not in st.session_state:
     st.session_state.currency = "USD"
     st.session_state.exchange = "US"
 
-# =========================
 # ✅ Verification Handler
-# =========================
 query_params = st.query_params
 if 'token' in query_params:
     token = query_params['token']
     client = connect_to_mongo()
-    success, message = verify_user(client, token)
-    if success:
-        st.session_state.show_verification_message = True
-        st.session_state.verification_message = message
-    else:
-        st.error(message)
-    st.query_params.clear()
+    if client:
+        success, message = verify_user(client, token)
+        if success:
+            # Fetch the verified user to ensure _id is available
+            db = client["UserDB"]
+            user = db.users.find_one({"verification_token": token})
+            if user and "_id" in user:
+                st.session_state.authenticated = True
+                st.session_state.user = user  # Set the full user object
+                st.session_state.show_verification_message = True
+                st.session_state.verification_message = message
+            else:
+                st.error("User data not found after verification")
+        else:
+            st.error(message)
+        st.query_params.clear()
+        st.rerun()  # Refresh to apply changes
 
+# Display verification message if set
+if st.session_state.show_verification_message:
+    st.success(st.session_state.verification_message)
+    if st.button("Proceed to Dashboard"):
+        st.session_state.show_verification_message = False
+        st.rerun()  # Transition to authenticated state
+    st.session_state.show_verification_message = False  # Reset after display
+    
 # =========================
 # 📏 Sidebar
 # =========================
@@ -1235,17 +1258,11 @@ with st.sidebar.container():
 import streamlit as st
 import streamlit.components.v1 as components
 
-# =========================
-# 🖥️ Main Content
-# =========================
-if st.session_state.show_verification_message:
-    st.success(st.session_state.verification_message)
-    st.session_state.show_verification_message = False
-
 if st.session_state.authenticated:
     st.title("📊 TradeTrend Analyzer")
     tabs = st.tabs(["Stock Analysis", "Portfolio", "Recommendations", "Economic Calendar", "Education"])
-    
+
+    # Stock Analysis Tab
     with tabs[0]:
         st.header("📈 Stock Analysis")
         with st.container():
@@ -1253,7 +1270,7 @@ if st.session_state.authenticated:
             base_tickers = col1.text_input("Enter symbols (e.g., AAPL,MSFT or RELIANCE,TCS)", value="").upper().split(',')
             tickers = [adjust_ticker(ticker.strip(), exchange) for ticker in base_tickers if ticker.strip()]
             data_source = col2.selectbox("Data Source", ["Historical", "Real-Time"], key="data_source")
-        
+
         time_range_option = st.selectbox(
             "Time Range", ["3 months", "6 months", "1 year", "3 years", "5 years", "Custom Range"],
             key="time_range"
@@ -1281,7 +1298,7 @@ if st.session_state.authenticated:
             else:
                 start_date = from_date
                 end_date = to_date
-        
+
         if start_date and end_date:
             for ticker in tickers:
                 base_ticker = reverse_adjust_ticker(ticker, exchange)
@@ -1353,105 +1370,111 @@ if st.session_state.authenticated:
                         compressed_csv = gzip.compress(df.to_csv(index=True).encode('utf-8'))
                         st.download_button(f"📥 Download {base_ticker} Data", compressed_csv, f"{base_ticker}_data.csv.gz", "application/gzip")
 
+    # Portfolio Tab
     with tabs[1]:
         st.header("💼 Portfolio")
-        holdings = get_portfolio(mongo_client, st.session_state.user["_id"])
-        with st.container():
-            col1, col2 = st.columns([2, 1])
-            base_ticker = col1.text_input("Ticker", key="portfolio_ticker").upper()
-            ticker = adjust_ticker(base_ticker, exchange)
-            shares = col2.number_input("Shares", min_value=0.0, value=1.0, step=0.1)
-            if st.button("Add to Portfolio"):
-                if base_ticker:
-                    holdings.append({"ticker": base_ticker, "shares": shares})
-                    if update_portfolio(mongo_client, st.session_state.user["_id"], holdings):
-                        st.success("Portfolio updated!")
+        if not st.session_state.authenticated or not st.session_state.user or "_id" not in st.session_state.user:
+            st.error("⚠️ Please log in to access your portfolio.")
+        else:
+            logger.info(f"Accessing portfolio for user: {st.session_state.user.get('_id')}")
+            holdings = get_portfolio(mongo_client, st.session_state.user["_id"])
+            with st.container():
+                col1, col2 = st.columns([2, 1])
+                base_ticker = col1.text_input("Ticker", key="portfolio_ticker").upper()
+                ticker = adjust_ticker(base_ticker, exchange)
+                shares = col2.number_input("Shares", min_value=0.0, value=1.0, step=0.1)
+                if st.button("Add to Portfolio"):
+                    if base_ticker:
+                        holdings.append({"ticker": base_ticker, "shares": shares})
+                        if update_portfolio(mongo_client, st.session_state.user["_id"], holdings):
+                            st.success("Portfolio updated!")
 
-        if holdings:
-            total_value, value_data, errors = calculate_portfolio_value(holdings, exchange)
-            if errors:
-                for error in errors:
-                    st.warning(error)
-            if value_data:
-                st.markdown(f"**Total Value**: {currency} {(total_value * exchange_rate):.2f}")
-                df_portfolio = pd.DataFrame(value_data)
-                st.dataframe(df_portfolio)
-                if not df_portfolio.empty:
-                    fig = go.Figure(data=[go.Pie(labels=df_portfolio["Ticker"], values=df_portfolio["Value"])])
-                    fig.update_layout(title="Portfolio Allocation", template='plotly_dark' if st.session_state.dark_mode else 'plotly')
-                    st.plotly_chart(fig, use_container_width=True)
+            if holdings:
+                total_value, value_data, errors = calculate_portfolio_value(holdings, exchange)
+                if errors:
+                    for error in errors:
+                        st.warning(error)
+                if value_data:
+                    st.markdown(f"**Total Value**: {currency} {(total_value * exchange_rate):.2f}")
+                    df_portfolio = pd.DataFrame(value_data)
+                    st.dataframe(df_portfolio)
+                    if not df_portfolio.empty:
+                        fig = go.Figure(data=[go.Pie(labels=df_portfolio["Ticker"], values=df_portfolio["Value"])])
+                        fig.update_layout(title="Portfolio Allocation", template='plotly_dark' if st.session_state.dark_mode else 'plotly')
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.info("No portfolio data available to display allocation chart.")
                 else:
-                    st.info("No portfolio data available to display allocation chart.")
-            else:
-                st.info("Unable to fetch portfolio data. Please check the tickers or try again later.")
-            
-            # Display holdings with serial numbers
-            st.markdown("### Portfolio Holdings")
-            for i, item in enumerate(holdings, start=1):
-                st.markdown(f"{i}. {item['ticker']}: {item['shares']} shares")
+                    st.info("Unable to fetch portfolio data. Please check the tickers or try again later.")
+                
+                # Display holdings with serial numbers
+                st.markdown("### Portfolio Holdings")
+                for i, item in enumerate(holdings, start=1):
+                    st.markdown(f"{i}. {item['ticker']}: {item['shares']} shares")
 
-            # Input for removing stock by serial number
-            remove_index = st.number_input("Enter Serial Number to Remove (1 to {})".format(len(holdings)), 
-                                          min_value=1, 
-                                          max_value=len(holdings) if holdings else 0, 
-                                          step=1, 
-                                          key="remove_index")
-            if st.button("Remove Stock"):
-                if 1 <= remove_index <= len(holdings):
-                    removed_ticker = holdings[remove_index - 1]["ticker"]  # Convert to 0-based index
-                    holdings.pop(remove_index - 1)
-                    if update_portfolio(mongo_client, st.session_state.user["_id"], holdings):
-                        st.success(f"Removed {removed_ticker} from portfolio!")
+                # Input for removing stock by serial number
+                remove_index = st.number_input("Enter Serial Number to Remove (1 to {})".format(len(holdings)), 
+                                              min_value=1, 
+                                              max_value=len(holdings) if holdings else 0, 
+                                              step=1, 
+                                              key="remove_index")
+                if st.button("Remove Stock"):
+                    if 1 <= remove_index <= len(holdings):
+                        removed_ticker = holdings[remove_index - 1]["ticker"]
+                        holdings.pop(remove_index - 1)
+                        if update_portfolio(mongo_client, st.session_state.user["_id"], holdings):
+                            st.success(f"Removed {removed_ticker} from portfolio!")
+                            st.rerun()
+                    else:
+                        st.error("Invalid serial number")
+
+                risk_metrics = calculate_risk_metrics(holdings, exchange)
+                if risk_metrics:
+                    st.markdown("### 📉 Risk Metrics")
+                    st.write(f"**VaR (95% Confidence, 1-Day)**: {currency} {(risk_metrics['VaR_95'] * exchange_rate):.2f}")
+                    st.write(f"**Portfolio Beta**: {risk_metrics['Beta']:.2f}")
+                    st.write(f"**Sharpe Ratio**: {risk_metrics['Sharpe_Ratio']:.2f}")
+                if value_data and st.button("Export Portfolio Report"):
+                    watchlist = get_watchlist(mongo_client, st.session_state.user["_id"])
+                    pdf_data = generate_pdf_report(holdings, watchlist, total_value, risk_metrics, exchange)
+                    st.download_button("Download PDF Report", pdf_data, "portfolio_report.pdf", "application/pdf")
+
+            with st.expander("🔔 Alerts"):
+                alerts = mongo_client["UserDB"]["alerts"].find({"user_id": st.session_state.user["_id"], "status": "active"})
+                st.write("Active Alerts:")
+                for alert in alerts:
+                    alert_exchange = alert.get("exchange", "US")
+                    adjusted_ticker = adjust_ticker(alert["ticker"], alert_exchange)
+                    st.write(f"{alert['ticker']}: {alert['condition'].capitalize()} {currency} {(alert['target_price'] * exchange_rate):.2f}")
+                    if st.button(f"Delete {alert['ticker']}", key=f"delete_alert_{alert['_id']}"):
+                        mongo_client["UserDB"]["alerts"].delete_one({"_id": alert["_id"]})
                         st.rerun()
-                else:
-                    st.error("Invalid serial number")
+                alert_base_ticker = st.text_input("Alert Ticker", key="alert_ticker").upper()
+                target_price = st.number_input("Target Price", min_value=0.0, step=0.01, key="alert_price")
+                condition = st.selectbox("Condition", ["Above", "Below"], key="alert_condition")
+                if st.button("Set Alert"):
+                    if add_alert(mongo_client, st.session_state.user["_id"], alert_base_ticker, target_price, condition.lower(), exchange):
+                        st.success("Alert set!")
 
-            risk_metrics = calculate_risk_metrics(holdings, exchange)
-            if risk_metrics:
-                st.markdown("### 📉 Risk Metrics")
-                st.write(f"**VaR (95% Confidence, 1-Day)**: {currency} {(risk_metrics['VaR_95'] * exchange_rate):.2f}")
-                st.write(f"**Portfolio Beta**: {risk_metrics['Beta']:.2f}")
-                st.write(f"**Sharpe Ratio**: {risk_metrics['Sharpe_Ratio']:.2f}")
-            if value_data and st.button("Export Portfolio Report"):
+            with st.expander("👀 Watchlist"):
                 watchlist = get_watchlist(mongo_client, st.session_state.user["_id"])
-                pdf_data = generate_pdf_report(holdings, watchlist, total_value, risk_metrics, exchange)
-                st.download_button("Download PDF Report", pdf_data, "portfolio_report.pdf", "application/pdf")
+                watch_base_ticker = st.text_input("Add Ticker", key="watchlist_ticker").upper()
+                if st.button("Add to Watchlist"):
+                    if watch_base_ticker and watch_base_ticker not in watchlist:
+                        watchlist.append(watch_base_ticker)
+                        if update_watchlist(mongo_client, st.session_state.user["_id"], watchlist):
+                            st.success("Watchlist updated!")
+                if watchlist:
+                    st.write("Watched Tickers:")
+                    for base_ticker in watchlist:
+                        col1, col2 = st.columns([3, 1])
+                        col1.write(base_ticker)
+                        if col2.button("✕", key=f"remove_watch_{base_ticker}"):
+                            watchlist.remove(base_ticker)
+                            update_watchlist(mongo_client, st.session_state.user["_id"], watchlist)
+                            st.rerun()
 
-        with st.expander("🔔 Alerts"):
-            alerts = mongo_client["UserDB"]["alerts"].find({"user_id": st.session_state.user["_id"], "status": "active"})
-            st.write("Active Alerts:")
-            for alert in alerts:
-                alert_exchange = alert.get("exchange", "US")
-                adjusted_ticker = adjust_ticker(alert["ticker"], alert_exchange)
-                st.write(f"{alert['ticker']} ({alert_exchange}): {alert['condition'].capitalize()} {currency} {(alert['target_price'] * exchange_rate):.2f}")
-                if st.button(f"Delete {alert['ticker']}", key=f"delete_alert_{alert['_id']}"):
-                    mongo_client["UserDB"]["alerts"].delete_one({"_id": alert["_id"]})
-                    st.rerun()
-            alert_base_ticker = st.text_input("Alert Ticker", key="alert_ticker").upper()
-            target_price = st.number_input("Target Price", min_value=0.0, step=0.01, key="alert_price")
-            condition = st.selectbox("Condition", ["Above", "Below"], key="alert_condition")
-            if st.button("Set Alert"):
-                if add_alert(mongo_client, st.session_state.user["_id"], alert_base_ticker, target_price, condition.lower(), exchange):
-                    st.success("Alert set!")
-
-        with st.expander("👀 Watchlist"):
-            watchlist = get_watchlist(mongo_client, st.session_state.user["_id"])
-            watch_base_ticker = st.text_input("Add Ticker", key="watchlist_ticker").upper()
-            if st.button("Add to Watchlist"):
-                if watch_base_ticker and watch_base_ticker not in watchlist:
-                    watchlist.append(watch_base_ticker)
-                    if update_watchlist(mongo_client, st.session_state.user["_id"], watchlist):
-                        st.success("Watchlist updated!")
-            if watchlist:
-                st.write("Watched Tickers:")
-                for base_ticker in watchlist:
-                    col1, col2 = st.columns([3, 1])
-                    col1.write(base_ticker)
-                    if col2.button("✕", key=f"remove_watch_{base_ticker}"):
-                        watchlist.remove(base_ticker)
-                        update_watchlist(mongo_client, st.session_state.user["_id"], watchlist)
-                        st.rerun()
-
+    # Recommendations Tab
     with tabs[2]:
         st.header("🤖 Stock Recommendations")
         sector = st.selectbox("Sector", ["Technology", "Finance", "Healthcare"], key="rec_sector")
@@ -1464,10 +1487,11 @@ if st.session_state.authenticated:
             else:
                 st.info("No recommendations available")
 
+    # Economic Calendar Tab
     with tabs[3]:
         st.header("📅 Economic Calendar")
         if st.button("Refresh Calendar"):
-            st.rerun()  # Refresh the page to reload the widget
+            st.rerun()
         st.write("Real-Time Economic Calendar provided by Investing.com. Customize via their site if needed.")
         components.html(
             """
@@ -1488,6 +1512,7 @@ if st.session_state.authenticated:
         )
         st.info("Note: The calendar reflects data as of June 29, 2025, 7:24 PM IST. If it fails to load, ensure your internet connection allows embedding from Investing.com.")
 
+    # Education Tab
     with tabs[4]:
         st.header("📚 Learn About Investing")
         st.markdown("""
@@ -1511,50 +1536,52 @@ if st.session_state.authenticated:
         - [Loss Aversion](https://www.investopedia.com/terms/l/lossaversion.asp) - Learn why investors fear losses more than they value gains.
         """, unsafe_allow_html=True)
 
-elif st.session_state.show_logout_message:
-    st.markdown("""
-    <div class="text-center mt-12 text-2xl">
-        👋 Thank you for using TradeTrend Analyzer!
-    </div>
-    """, unsafe_allow_html=True)
-    st.session_state.show_logout_message = False
 else:
-    st.markdown("""
-    <div class="text-center mt-12 bg-gray-900 min-h-screen flex items-center justify-center">
-        <div class="bg-gray-800 p-8 rounded-lg shadow-xl max-w-4xl w-full">
-            <h1 class="text-5xl font-bold text-white mb-4 flex items-center justify-center">
-                <span>TradeTrend Analyzer</span>
-                <span class="ml-4 text-3xl">📈</span>
-            </h1>
-            <p class="text-lg text-gray-300 mb-6">
-                Your one-stop platform for smarter stock market decisions. Analyze stocks, manage your portfolio,
-                track real-time data, and stay updated with market news and economic events.
-            </p>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
-                    <h4 class="text-xl font-semibold text-blue-400 mb-2">Real-Time Insights</h4>
-                    <p class="text-gray-300">Access live stock prices and technical indicators to make informed trades.</p>
+    # Handle logout or unauthenticated state
+    if st.session_state.show_logout_message:
+        st.markdown("""
+        <div class="text-center mt-12 text-2xl">
+            👋 Thank you for using TradeTrend Analyzer!
+        </div>
+        """, unsafe_allow_html=True)
+        st.session_state.show_logout_message = False
+    else:
+        st.markdown("""
+        <div class="text-center mt-12 bg-gray-900 min-h-screen flex items-center justify-center">
+            <div class="bg-gray-800 p-8 rounded-lg shadow-xl max-w-4xl w-full">
+                <h1 class="text-5xl font-bold text-white mb-4 flex items-center justify-center">
+                    <span>TradeTrend Analyzer</span>
+                    <span class="ml-4 text-3xl">📈</span>
+                </h1>
+                <p class="text-lg text-gray-300 mb-6">
+                    Your one-stop platform for smarter stock market decisions. Analyze stocks, manage your portfolio,
+                    track real-time data, and stay updated with market news and economic events.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
+                        <h4 class="text-xl font-semibold text-blue-400 mb-2">Real-Time Insights</h4>
+                        <p class="text-gray-300">Access live stock prices and technical indicators to make informed trades.</p>
+                    </div>
+                    <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
+                        <h4 class="text-xl font-semibold text-blue-400 mb-2">Portfolio Management</h4>
+                        <p class="text-gray-300">Track and optimize your investments with our intuitive tools.</p>
+                    </div>
+                    <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
+                        <h4 class="text-xl font-semibold text-blue-400 mb-2">Price Alerts</h4>
+                        <p class="text-gray-300">Set custom alerts to never miss a trading opportunity.</p>
+                    </div>
                 </div>
-                <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
-                    <h4 class="text-xl font-semibold text-blue-400 mb-2">Portfolio Management</h4>
-                    <p class="text-gray-300">Track and optimize your investments with our intuitive tools.</p>
+                <p class="text-lg text-gray-400 mb-6">
+                    🔒 <a href="#" class="text-blue-500 hover:text-blue-300 underline">Log In</a> or 
+                    <a href="#" class="text-blue-500 hover:text-blue-300 underline">Register</a> to start exploring!
+                </p>
+                <div class="text-sm text-gray-500 mt-4">
+                    Made by <span class="text-white font-semibold">Abdul Muqeet</span> | CSE Dept, GMU
                 </div>
-                <div class="p-6 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-300 transform hover:scale-105">
-                    <h4 class="text-xl font-semibold text-blue-400 mb-2">Price Alerts</h4>
-                    <p class="text-gray-300">Set custom alerts to never miss a trading opportunity.</p>
-                </div>
-            </div>
-            <p class="text-lg text-gray-400 mb-6">
-                🔒 <a href="#" class="text-blue-500 hover:text-blue-300 underline">Log In</a> or 
-                <a href="#" class="text-blue-500 hover:text-blue-300 underline">Register</a> to start exploring!
-            </p>
-            <div class="text-sm text-gray-500 mt-4">
-                Made by <span class="text-white font-semibold">Abdul Muqeet</span> | CSE Dept, GMU
             </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("Made by **Abdul Muqeet**")
-st.sidebar.markdown("CSE Dept , GMU")
+st.sidebar.markdown("CSE Dept, GMU")
